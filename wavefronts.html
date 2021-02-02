@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Two Source Interference</title>
+  <script>
+    "use strict";
+
+    let simRunning = true;
+
+    window.onload = () => {
+      const canvas = setupCanvas();
+
+      const config = setupInputs(canvas);
+
+      startSim(canvas, config);
+    }
+
+    function setupCanvas() {
+      const canvas = document.getElementById("main-canvas");
+      const ctx = canvas.getContext("2d");
+
+      ctx.canvas.width = window.innerWidth;
+      ctx.canvas.height = window.innerHeight;
+
+      return canvas
+    }
+
+    function setupInputs(canvas) {
+      const inputElems = document.getElementsByClassName("input");
+
+      for (const input of inputElems) {
+        input.addEventListener("keyup", async (e) => {
+          if (e.keyCode === 13) {
+            simRunning = false;
+
+            const config = getConfig(inputElems);
+            await sleep(1100 / config["fps"]);
+
+            simRunning = true;
+
+            startSim(
+              canvas,
+              config,
+              stop
+            );
+          }
+        });
+      }
+
+      return getConfig(inputElems)
+    }
+
+    function getConfig(inputElems) {
+      const config = {}
+
+      for (const input of inputElems) {
+        const inputName = input.className.split(" ")[0];
+        config[inputName] = input.value;
+      }
+      return config;
+    }
+
+    async function startSim(canvas, config) {
+      const POINT_SOURCE_R = 5;
+      const POINT_SOURCE_COLOR = "#0068BE";
+      const EXTREME_THICKNESS = 2;
+      const CREST_COLOR = "#0071C4";
+      const TROUGH_COLOR = "#46ABFF";
+
+      const PIXELS_PER_METER = 10;
+      const MAX_RADIUS = Math.max(1.5 * canvas.width, 1.5 * canvas.height) / PIXELS_PER_METER
+
+      const ctx = canvas.getContext("2d");
+      const { sep, freq, speed, fps } = config;
+
+      const wavelength = sep * speed / freq;
+
+      const pointSources = [
+        {
+          x: canvas.width / 2 - wavelength / 2 * PIXELS_PER_METER,
+          y: canvas.height / 2,
+          extrema: [0],
+        },
+        {
+          x: canvas.width / 2 + wavelength / 2 * PIXELS_PER_METER,
+          y: canvas.height / 2,
+          extrema: [0],
+        },
+      ];
+
+      const timer = {
+        prev: (new Date()).getTime(),
+        deltaTime: 0,
+
+        tick() {
+          const cur = (new Date()).getTime();
+          this.deltaTime = cur - this.prev;
+          this.prev = cur;
+        },
+      };
+      let periodTimer = 0;
+
+      do {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        periodTimer += timer.deltaTime;
+
+        for (const pointSource of pointSources) {
+          drawFillCircle(
+            ctx,
+            POINT_SOURCE_COLOR,
+            pointSource.x,
+            pointSource.y,
+            POINT_SOURCE_R
+          );
+
+          let toRemove = -1;
+
+          for (let i = 0; i < pointSource.extrema.length; i++) {
+            const radius = pointSource.extrema[i];
+
+            if (radius > MAX_RADIUS) {
+              toRemove = i;
+              continue;
+            }
+
+            drawEmptyCircle(
+              ctx,
+              CREST_COLOR,
+              EXTREME_THICKNESS,
+              pointSource.x,
+              pointSource.y,
+              radius * PIXELS_PER_METER,
+            );
+
+            pointSource.extrema[i] += speed * timer.deltaTime / 1000;
+          }
+
+          if (toRemove > -1) {
+            pointSource.extrema.splice(toRemove)
+          }
+
+          if (periodTimer > 1 / freq * 1000) {
+            pointSource.extrema.push(0);
+          }
+        }
+        if (periodTimer > 1 / freq * 1000) {
+          periodTimer = 0;
+        }
+
+        timer.tick();
+        await sleep(1000 / fps);
+      } while (simRunning)
+    }
+
+    function drawFillCircle(ctx, color, x, y, r) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+
+    function drawEmptyCircle(ctx, color, lineWidth, x, y, r) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+  </script>
+  <style>
+    body {
+      margin: 0;
+    }
+
+    #main-canvas {
+      position: absolute;
+    }
+
+    #config {
+      position: absolute;
+      bottom: 5px;
+      right: 5px;
+
+      display: flex;
+      flex-direction: column;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="main-canvas"> </canvas>
+  <div id="config">
+    <p> Seperation of point sources in terms of λ/2</p>
+    <input type="number" class="sep input" value="1"> </input>
+    <p> Frequency of Wave Sources (Hz) </p>
+    <input type="number" class="freq input" value="1"> </input>
+    <p> Wave Speed (m/s) </p>
+    <input type="number" class="speed input" value="10"> </input>
+    <p> Frames Per Second </p>
+    <input type="number" class="fps input" value="60"> </input>
+  </div>
+</body>
+
+</html>
