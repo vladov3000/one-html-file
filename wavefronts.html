@@ -122,7 +122,8 @@
 
           for (let i = 0; i < pointSource.extrema.length; i++) {
             const radius = pointSource.extrema[i];
-            const color = i % 2 === +!makeCrest ? CREST_COLOR : TROUGH_COLOR;
+            const color = (pointSource.extrema.length - 1 - i) % 2 === +!makeCrest
+              ? CREST_COLOR : TROUGH_COLOR;
 
             if (radius > MAX_RADIUS) {
               toRemove = i;
@@ -146,11 +147,10 @@
           }
 
           if (periodTimer > 1 / freq * 1000) {
-            pointSource.extrema.unshift(0);
+            pointSource.extrema.push(0);
           }
         }
         if (periodTimer > 1 / freq * 1000) {
-          console.log(+!makeCrest);
           makeCrest = !makeCrest;
           periodTimer = 0;
         }
