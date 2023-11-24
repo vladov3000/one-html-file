@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Boolean Algebra</title>
+  <script>
+    "use strict";
+
+    window.onload = () => {
+      console.log("hello world");
+    }
+
+    function addInputVar() {
+      console.log("Adding Input Var");
+      const headerRowElem =
+        document.getElementById("main-truth-table-header");
+      const outputsElem =
+        headerRowElem.getElementsByClassName("mtt-header-outputs")[0];
+      const newVarElem = document.createElement("TH");
+      const newInputElem = document.createElement("INPUT");
+      const resizeInputElem = () => {
+        newInputElem.size = newInputElem.value.length + 1;
+      };
+
+      resizeInputElem()
+      newInputElem.className += "var-name-input";
+      newInputElem.onkeydown = resizeInputElem;
+      newInputElem.onfocusout = resizeInputElem;
+      newVarElem.append(newInputElem);
+      headerRowElem.insertBefore(newVarElem, outputsElem);
+
+      console.log(newInputElem);
+    }
+
+    function addOutputVar() {
+      console.log("Adding Output Var");
+    }
+  </script>
+  <style>
+    body {
+      margin: 0 auto;
+      max-width: 500px;
+    }
+
+    .truth-table {
+      border: 1px solid black;
+      margin: 0 auto;
+      min-width: 300px;
+    }
+
+    .outlined-table-entry {
+      border: 1px solid black;
+      padding: 0 5px 0 5px;
+    }
+
+    .var-name-input {
+    }
+  </style>
+</head>
+
+<body>
+  <h3> Truth Table </h3>
+  <table class="truth-table" id="main-truth-table">
+    <thead>
+      <tr id="main-truth-table-header">
+        <th class="mtt-header-inputs outlined-table-entry">
+          Inputs
+          <button onclick="addInputVar()">+</button>
+        </th>
+        <th class="mtt-header-outputs outlined-table-entry">
+          Outputs
+          <button onclick="addOutputVar()">+</button>
+        </th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+</body>
+
+</html>
