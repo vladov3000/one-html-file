@@ -1,0 +1,289 @@
+<title> Wave Function Collapse </title>
+
+<script>
+  const dividerWidth = 0.01;
+
+  const isMac = navigator.platform?.toLowerCase().indexOf("mac") !== -1;
+
+  const left = Symbol("left");
+  const right = Symbol("right");
+
+  const vertexShaderCode = `
+attribute vec2 position;
+attribute vec2 uv;
+
+varying mediump vec2 uvVarying;
+
+void main() {
+    gl_Position = vec4(position, 0, 1);
+    uvVarying = uv;
+}
+`;
+
+  const fragmentShaderCode = `
+uniform sampler2D paintSampler;
+
+varying mediump vec2 uvVarying;
+
+void main() {
+    gl_FragColor = texture2D(paintSampler, uvVarying);
+}
+`;
+
+  window.onload = initialize;
+
+  function initialize() {
+      const width = +paintWidthInput.value;
+      const height = +paintHeightInput.value;
+      const renderer = makeRenderer(mainCanvas, width, height);
+
+      gradient(renderer.leftImage, 1, 0);
+      render(renderer, left);
+
+      gradient(renderer.rightImage);
+      render(renderer, right);
+
+      mainCanvas.onmousedown = (event) => onPaint(renderer, event);
+      mainCanvas.onmousemove = (event) => onPaint(renderer, event);
+      mainCanvas.oncontextmenu = (event) => {
+          onPaint(renderer, event);
+          return false;
+      }
+
+      resizePaintButton.onclick = () => {
+          const newWidth = paintWidthInput.value;
+          const newHeight = paintHeightInput.value;
+          renderer.leftImage = resizeImage(renderer.leftImage, newWidth, newHeight);
+          render(renderer, left);
+      }
+  }
+
+  function gradient(image, verticalChannel = 0, horizontalChannel = 2) {
+      for (let row = 0; row < image.height; row++) {
+          for (let column = 0; column < image.width; column++) {
+              const pixel = (row * image.width + column) * 3;
+              image.data[pixel + verticalChannel] = (row / image.height) * 255;
+              image.data[pixel + horizontalChannel] = (column / image.width) * 255;
+          }
+      }
+  }
+
+  function makeRenderer(canvas, width, height) {
+      const options = { preserveDrawingBuffer: true };
+      const gl = canvas.getContext("webgl2", options);
+      if (gl === null) {
+          console.error("Failed to get rendering context for WebGL")
+          return;
+      }
+
+      const vertexShader = makeShader(gl, vertexShaderCode, gl.VERTEX_SHADER);
+      if (vertexShader === null)
+          return;
+      
+      const fragmentShader = makeShader(gl, fragmentShaderCode, gl.FRAGMENT_SHADER);
+      if (fragmentShader === null)
+          return;
+
+      const shaderProgram = makeShaderProgram(gl, vertexShader, fragmentShader);
+      if (shaderProgram === null)
+          return;
+
+      gl.useProgram(shaderProgram);
+
+      const vertices = new Float32Array([
+          // Left Top-right triangle
+          -1, 1, 0, 1,
+          -dividerWidth, 1, 1, 1,
+          -dividerWidth, -1, 1, 0,
+
+          // Left Bottom-left triangle
+          -dividerWidth, -1, 1, 0,
+          -1, -1, 0, 0,
+          -1, 1, 0, 1,
+
+          // Right Top-right triangle
+          dividerWidth, 1, 0, 1,
+          1, 1, 1, 1,
+          1, -1, 1, 0,
+
+          // Right Bottom-left
+          1, -1, 1, 0,
+          dividerWidth, -1, 0, 0,
+          dividerWidth, 1, 0, 1,
+      ]);
+
+      const vertexBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+      makeAttribute(gl, shaderProgram, "position", 2, gl.FLOAT, 16, 0);
+      makeAttribute(gl, shaderProgram, "uv", 2, gl.FLOAT, 16, 8);
+
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
+      const leftImage = makeImage(width, height);
+      const rightImage = makeImage(width, height);
+
+      return { gl, leftImage, rightImage };
+  }
+
+  function makeImage(width, height) {
+      return {
+          data: new Uint8Array(width * height * 3),
+          width,
+          height,
+      };
+  }
+
+  function makeAttribute(gl, shaderProgram, name, size, type, stride, offset) {
+      const attribute = gl.getAttribLocation(shaderProgram, name);
+      if (attribute == -1) {
+          console.error(`Failed to get attribute location of ${name}.`);
+          return false;
+      }
+
+      gl.vertexAttribPointer(attribute, size, type, false, stride, offset);
+      gl.enableVertexAttribArray(attribute);
+      const error = gl.getError();
+      if (error !== gl.NO_ERROR) {
+          const errorString = glErrorToString(gl, error);
+          console.error(`Failed to enable vertex attribute array: ${errorString}`);
+          return false;
+      }
+
+      return true;
+  }
+
+  function makeShaderProgram(gl, vertexShader, fragmentShader) {
+      const program = gl.createProgram()
+      gl.attachShader(program, vertexShader);
+      gl.attachShader(program, fragmentShader);
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const log = gl.getProgramInfoLog(program);
+          console.error(`Failed to link shader program:\n${log}`);
+          return null;
+      }
+      return program;
+  }
+
+  function makeShader(gl, code, type) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, code);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          const log = gl.getShaderInfoLog(shader);
+          const typeString = shaderTypeToString(gl, type);
+          console.error(`Failed to compile ${typeString} shader:\n${log}`);
+          return null;
+      }
+      return shader;
+  }
+
+  function shaderTypeToString(gl, type) {
+      if (type === gl.VERTEX_SHADER)
+          return "vertex";
+      else if (type === gl.FRAGMENT_SHADER)
+          return "fragment";
+      else
+          return "<unknown shader type>";
+  }
+
+  function glErrorToString(gl, error) {
+      if (error === gl.NO_ERROR)
+          return "no error";
+      else if (error === gl.INVALID_ENUM)
+          return "invalid enum";
+      else if (error === gl.INVALID_VALUE)
+          return "invalid value";
+      else if (error === gl.INVALID_OPERATION)
+          return "invalid operation";
+      else if (error === gl.INVALID_FRAMEBUFFER_OPERATION)
+          return "invalid framebuffer operation";
+      else if (error === gl.OUT_OF_MEMORY)
+          return "out of memory";
+      else if (error === gl.CONTEXT_LOST_WEBGL)
+          return "context lost webgl";
+      else
+          return "<unknown gl error>";
+  }
+
+  function render(renderer, direction) {
+      const { gl, leftImage, rightImage } = renderer;
+      const image = direction === left ? leftImage : rightImage;
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, image.width, image.height,
+                    0, gl.RGB, gl.UNSIGNED_BYTE, image.data);
+      gl.drawArrays(gl.TRIANGLES, direction === left ? 0 : 6, 6);
+  }
+
+  function onPaint(renderer, event) {
+      const leftClick = event.buttons & 1;
+      const macRightClick = isMac && leftClick && event.ctrlKey;
+      const rightClick = event.button & 2 || macRightClick;
+      
+      if (!(leftClick || rightClick))
+          return;
+      
+      if (event.x > mainCanvas.width / 2 - dividerWidth)
+          return;
+      
+      const normalizedX = Math.min(1, event.x / mainCanvas.width * 2);
+      const normalizedY = Math.min(1, event.y / mainCanvas.height);
+
+      const image = renderer.leftImage;
+      const row = Math.floor(normalizedY * image.height);
+      const column = Math.floor(normalizedX * image.width);
+
+      const inputElement = rightClick ? secondaryColorInput : primaryColorInput;
+      const color = getInputColor(inputElement);
+      
+      const pixel = (row * image.width + column) * 3;
+      image.data[pixel] = (color >> 16) & 0xFF;
+      image.data[pixel + 1] = (color >> 8) & 0xFF;
+      image.data[pixel + 2] = color & 0xFF;
+
+      render(renderer, left);
+  }
+
+  function getInputColor(inputElement) {
+      const colorHex = inputElement.value.substring(1);
+      return parseInt(colorHex, 16);
+  }
+
+  function resizeImage(image, newWidth, newHeight) {
+      const newImage = makeImage(newWidth, newHeight);
+      for (let i = 0; i < Math.min(image.height, newHeight); i++) {
+          for (let j = 0; j < Math.min(image.width, newWidth); j++) {
+              const source = (i * image.width + j) * 3;
+              const destination = (i * newWidth + j) * 3;
+              newImage.data[destination] = image.data[source];
+              newImage.data[destination + 1] = image.data[source + 1];
+              newImage.data[destination + 2] = image.data[source + 2];
+          }
+      }
+      return newImage;
+  }
+</script>
+
+<body>
+  <canvas id="mainCanvas" width="800" height="400"></canvas>
+  <div>
+    <label for="primaryColorInput"> Primary Color: </label>
+    <input id="primaryColorInput" type="color"/>
+    <label for="secondaryColorInput"> Secondary Color: </label>
+    <input id="secondaryColorInput" type="color"/>
+  </div>
+  <div>
+    <label for="paintWidthInput"> Width: </label>
+    <input id="paintWidthInput" type="number" min="0" value="20"/>
+    <label for="paintHeightInput"> Height: </label>
+    <input id="paintHeightInput" type="number" min="0" value="20"/>
+    <button id="resizePaintButton"> Resize Canvas </button>
+  </div>
+</body>
+
